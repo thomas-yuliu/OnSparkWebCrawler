@@ -1,6 +1,9 @@
 package baozi.webcrawler.onspark.common.entry;
 
-import baozi.webcrawler.common.metainfo.BaseToCrawlUrls;
+import org.apache.spark.SparkConf;
+import org.apache.spark.SparkContext;
+import org.apache.spark.api.java.JavaSparkContext;
+
 import baozi.webcrawler.onspark.common.analyzer.RDDAnalyzer;
 import baozi.webcrawler.onspark.common.queue.RDDURLQueue;
 import baozi.webcrawler.onspark.common.urlfilter.RDDPostExpansionFilterEnforcer;
@@ -9,39 +12,40 @@ import baozi.webcrawler.onspark.common.urlidentifier.RDDURLIdentifier;
 import baozi.webcrawler.onspark.common.webcomm.RDDFunctionWebCommManager;
 
 public class InstanceFactory {
+  private static final SparkConf sparkConf = new SparkConf().setAppName("BaoziSparkWebCralwer");
+  private static final JavaSparkContext sparkContext = new JavaSparkContext(sparkConf);
+  private static final RDDFunctionWebCommManager rddFunctionWebCommManager = new RDDFunctionWebCommManager();
+  private static final RDDAnalyzer rddAnalyzer = new RDDAnalyzer();
+  private static final RDDPreExpansionFilterEnforcer rddPreExpansionFilterEnforcer = new RDDPreExpansionFilterEnforcer();
+  private static final RDDPostExpansionFilterEnforcer rddPostExpansionFilterEnforcer = new RDDPostExpansionFilterEnforcer();
+  private static final RDDURLQueue rddURLQueue = new RDDURLQueue();
+  private static final RDDURLIdentifier rddURLIdentifier = new RDDURLIdentifier();
+  
+  public static JavaSparkContext getSparkContext(){
+    return sparkContext;
+  }
 
   public static RDDFunctionWebCommManager getRDDFunctionWebCommManager() {
-    // TODO Auto-generated method stub
-    return null;
+    return rddFunctionWebCommManager;
   }
 
   public static RDDAnalyzer getRDDAnalyzer() {
-    // TODO Auto-generated method stub
-    return null;
+    return rddAnalyzer;
   }
 
   public static RDDPreExpansionFilterEnforcer getPreExpansionFilterEnforcer() {
-    // TODO Auto-generated method stub
-    return null;
+    return rddPreExpansionFilterEnforcer;
   }
 
   public static RDDPostExpansionFilterEnforcer getPostExpansionFilterEnforcer() {
-    // TODO Auto-generated method stub
-    return null;
+    return rddPostExpansionFilterEnforcer;
   }
   
   public static RDDURLQueue getNextURLQueueInstance() {
-    return null;
+    return rddURLQueue;
   }
 
   public static RDDURLIdentifier getURLIdentifier() {
-    // TODO Auto-generated method stub
-    return null;
+    return rddURLIdentifier;
   }
-
-  public static BaseToCrawlUrls getOneBaseToCrawlUrlsInstance() {
-    // TODO Auto-generated method stub
-    return null;
-  }
-
 }

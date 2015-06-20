@@ -9,11 +9,6 @@ import baozi.webcralwer.common.utils.PaceKeeper;
 import baozi.webcrawler.onspark.common.analyzer.RDDAnalyzer;
 import baozi.webcrawler.onspark.common.entry.InstanceFactory;
 import baozi.webcrawler.common.metainfo.BaseURL;
-import baozi.webcrawler.common.queue.URLQueue;
-import baozi.webcrawler.common.urlfilter.PostExpansionFilterEnforcer;
-import baozi.webcrawler.common.urlfilter.PreExpansionFilterEnforcer;
-import baozi.webcrawler.common.urlidentifier.URLIdentifier;
-import baozi.webcrawler.common.webcomm.HTTPWebCommManager;
 import baozi.webcrawler.onspark.common.queue.RDDURLQueue;
 import baozi.webcrawler.onspark.common.urlfilter.RDDPostExpansionFilterEnforcer;
 import baozi.webcrawler.onspark.common.urlfilter.RDDPreExpansionFilterEnforcer;
@@ -31,17 +26,16 @@ public class OnSparkWorkflowManager {
   private RDDPostExpansionFilterEnforcer postExpansionfilterEnforcer = InstanceFactory.getPostExpansionFilterEnforcer();
 
   public void crawl() {
-
     while (shouldContinue()) {
-      JavaRDD<String> currBatch = nextQueue.nextBatch();
+      JavaRDD<BaseURL> currBatch = nextQueue.nextBatch();
       JavaRDD<BaseURL> downloaded = currBatch
           .map(rddFunctionWebCommManager.downloadPageContent())
           .filter(rddFunctionWebCommManager.filterEmptyUrls()).cache();
       downloaded.foreach(rddAnalyzer.analyze());
       List<BaseURL> nextUrls = downloaded
-          .filter(preExpansionfilterEnforcer.applyFilters())
+          .filter(preExpansionfilterEnforcer.filter())
           .flatMap(urlIdentifier.extractUrls())
-          .filter(postExpansionfilterEnforcer.applyFilters()).collect();
+          .filter(postExpansionfilterEnforcer.filter()).collect();
       nextQueue.putNextUrls(nextUrls);
 
       PaceKeeper.pause();

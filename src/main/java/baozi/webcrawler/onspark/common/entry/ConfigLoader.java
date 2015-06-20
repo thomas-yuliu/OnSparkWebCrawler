@@ -12,7 +12,7 @@ import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
 
 import baozi.webcralwer.common.utils.LogManager;
-import baozi.webcrawler.common.metainfo.BaseToCrawlUrls;
+import baozi.webcrawler.common.entry.InstanceFactory;
 import baozi.webcrawler.common.metainfo.BaseURL;
 import baozi.webcrawler.common.urlfilter.ContentTypeFilter;
 import baozi.webcrawler.common.urlfilter.InMemroySeenUrlFilter;
@@ -48,9 +48,9 @@ public class ConfigLoader {
         nextUrls.add(baseUrl);
         seenFilter.filter(baseUrl);
       }
-      BaseToCrawlUrls lbtcu = InstanceFactory.getOneBaseToCrawlUrlsInstance();
-      lbtcu.putToCrawlUrls(nextUrls);
-      InstanceFactory.getNextURLQueueInstance().putNextUrls(lbtcu);
+      //BaseToCrawlUrls lbtcu = InstanceFactory.getOneBaseToCrawlUrlsInstance();
+      //lbtcu.putToCrawlUrls(nextUrls);
+      InstanceFactory.getNextURLQueueInstance().putNextUrls(nextUrls);
       logger.logInfo("starting from baseUrl: " + nextUrls.toString());
     } catch (MalformedURLException e) {
       // TODO Auto-generated catch block

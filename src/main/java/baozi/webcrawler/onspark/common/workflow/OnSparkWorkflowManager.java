@@ -7,7 +7,7 @@ import org.apache.spark.api.java.JavaRDD;
 import baozi.webcralwer.common.utils.LogManager;
 import baozi.webcralwer.common.utils.PaceKeeper;
 import baozi.webcrawler.onspark.common.analyzer.RDDAnalyzer;
-import baozi.webcrawler.onspark.common.entry.InstanceFactory;
+import baozi.webcrawler.onspark.common.entry.OnSparkInstanceFactory;
 import baozi.webcrawler.common.metainfo.BaseURL;
 import baozi.webcrawler.onspark.common.queue.RDDURLQueue;
 import baozi.webcrawler.onspark.common.urlfilter.RDDPostExpansionFilterEnforcer;
@@ -18,26 +18,32 @@ import baozi.webcrawler.onspark.common.webcomm.RDDFunctionWebCommManager;
 public class OnSparkWorkflowManager {
   private LogManager logger = new LogManager(OnSparkWorkflowManager.class);
 
-  private RDDURLQueue nextQueue = InstanceFactory.getNextURLQueueInstance();
-  private RDDFunctionWebCommManager rddFunctionWebCommManager = InstanceFactory.getRDDFunctionWebCommManager();
-  private RDDAnalyzer rddAnalyzer = InstanceFactory.getRDDAnalyzer();
-  private RDDURLIdentifier urlIdentifier = InstanceFactory.getURLIdentifier();
-  private RDDPreExpansionFilterEnforcer preExpansionfilterEnforcer = InstanceFactory.getPreExpansionFilterEnforcer();
-  private RDDPostExpansionFilterEnforcer postExpansionfilterEnforcer = InstanceFactory.getPostExpansionFilterEnforcer();
+  private RDDURLQueue nextQueue = OnSparkInstanceFactory.getNextURLQueueInstance();
+  private RDDAnalyzer rddAnalyzer = OnSparkInstanceFactory.getRDDAnalyzer();
+  private RDDURLIdentifier urlIdentifier = OnSparkInstanceFactory.getURLIdentifier();
+  private RDDPreExpansionFilterEnforcer preExpansionfilterEnforcer = OnSparkInstanceFactory.getPreExpansionFilterEnforcer();
+  private RDDPostExpansionFilterEnforcer postExpansionfilterEnforcer = OnSparkInstanceFactory.getPostExpansionFilterEnforcer();
 
   public void crawl() {
     while (shouldContinue()) {
       JavaRDD<BaseURL> currBatch = nextQueue.nextBatch();
+      
+      currBatch.cache();
+      //logger.logDebug("received next batch from queue: " + currBatch.toArray().toString());
       JavaRDD<BaseURL> downloaded = currBatch
-          .map(rddFunctionWebCommManager.downloadPageContent())
-          .filter(rddFunctionWebCommManager.filterEmptyUrls()).cache();
+          .map(RDDFunctionWebCommManager.downloadPageContent())
+          .filter(RDDFunctionWebCommManager.filterEmptyUrls()).cache();
+      downloaded.cache();
+      logger.logDebug("downloaded web pages");
       downloaded.foreach(rddAnalyzer.analyze());
+
       List<BaseURL> nextUrls = downloaded
           .filter(preExpansionfilterEnforcer.filter())
           .flatMap(urlIdentifier.extractUrls())
           .filter(postExpansionfilterEnforcer.filter()).collect();
+      logger.logDebug("next batches: " + nextUrls.toString());
       nextQueue.putNextUrls(nextUrls);
-
+      
       PaceKeeper.pause();
     }
   }

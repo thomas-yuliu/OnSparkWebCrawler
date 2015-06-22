@@ -12,7 +12,6 @@ import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
 
 import baozi.webcralwer.common.utils.LogManager;
-import baozi.webcrawler.common.entry.InstanceFactory;
 import baozi.webcrawler.common.metainfo.BaseURL;
 import baozi.webcrawler.common.urlfilter.ContentTypeFilter;
 import baozi.webcrawler.common.urlfilter.InMemroySeenUrlFilter;
@@ -33,10 +32,10 @@ public class ConfigLoader {
   }
   
   public void load(){
-    loadInputConfigFile("conf/inputConfig.json");
+    loadInputConfigFile("/Users/yliu/mavenWorkspace/eclipse-workspace/WebCrawler/conf/inputConfig.json");
 
     InMemroySeenUrlFilter seenFilter = new InMemroySeenUrlFilter();
-    InstanceFactory.getPostExpansionFilterEnforcer().addFilter(seenFilter);
+    OnSparkInstanceFactory.getPostExpansionFilterEnforcer().addFilter(seenFilter);
     
     try {
       BaseURL baseUrl = null;
@@ -50,7 +49,7 @@ public class ConfigLoader {
       }
       //BaseToCrawlUrls lbtcu = InstanceFactory.getOneBaseToCrawlUrlsInstance();
       //lbtcu.putToCrawlUrls(nextUrls);
-      InstanceFactory.getNextURLQueueInstance().putNextUrls(nextUrls);
+      OnSparkInstanceFactory.getNextURLQueueInstance().putNextUrls(nextUrls);
       logger.logInfo("starting from baseUrl: " + nextUrls.toString());
     } catch (MalformedURLException e) {
       // TODO Auto-generated catch block
@@ -58,9 +57,10 @@ public class ConfigLoader {
     }
 
     UrlDepthFilter preFilter = new UrlDepthFilter(1);
-    InstanceFactory.getPreExpansionFilterEnforcer().addFilter(preFilter);
+    OnSparkInstanceFactory.getPreExpansionFilterEnforcer().addFilter(preFilter);
     
     ContentTypeFilter fileExtensionFilter = new ContentTypeFilter();
-    InstanceFactory.getPostExpansionFilterEnforcer().addFilter(fileExtensionFilter);
+    OnSparkInstanceFactory.getPostExpansionFilterEnforcer().addFilter(fileExtensionFilter);
+    
   }
 }

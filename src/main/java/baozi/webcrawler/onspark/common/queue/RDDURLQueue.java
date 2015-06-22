@@ -7,10 +7,13 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 import org.apache.spark.api.java.JavaRDD;
 
+import baozi.webcralwer.common.utils.LogManager;
 import baozi.webcrawler.common.metainfo.BaseURL;
-import baozi.webcrawler.onspark.common.entry.InstanceFactory;
+import baozi.webcrawler.onspark.common.entry.OnSparkInstanceFactory;
+import baozi.webcrawler.onspark.common.workflow.OnSparkWorkflowManager;
 
 public class RDDURLQueue {
+  private LogManager logger = new LogManager(RDDURLQueue.class);
 
   private BlockingQueue<BaseURL> queue = new LinkedBlockingQueue<>();
   private static final int batchsize = 100;
@@ -18,7 +21,8 @@ public class RDDURLQueue {
   public JavaRDD<BaseURL> nextBatch() {
     List<BaseURL> collection = new ArrayList<>();
     queue.drainTo(collection, batchsize);
-    return InstanceFactory.getSparkContext().parallelize(collection);
+    logger.logDebug("putting next batch into RDD: " + collection.toString());
+    return OnSparkInstanceFactory.getSparkContext().parallelize(collection, 2);
   }
 
   public boolean hasMoreUrls() {

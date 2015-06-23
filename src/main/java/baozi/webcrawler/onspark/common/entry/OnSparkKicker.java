@@ -2,7 +2,7 @@ package baozi.webcrawler.onspark.common.entry;
 
 import baozi.webcrawler.onspark.common.workflow.OnSparkWorkflowManager;
 
-class Kicker {
+class OnSparkKicker {
 
   public void kick() {
     ConfigLoader configLoader = new ConfigLoader();

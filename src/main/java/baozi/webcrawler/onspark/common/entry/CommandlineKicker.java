@@ -1,9 +1,13 @@
 package baozi.webcrawler.onspark.common.entry;
 
-public class CommandlineKicker extends Kicker {
+import baozi.webcrawler.onspark.common.analyzer.MLJsoupRDDAnalyzer;
+
+public class CommandlineKicker extends OnSparkKicker {
 
   public static void main(String[] input){
-    Kicker k = new Kicker();
-    k.kick();
+    OnSparkKicker k = new OnSparkKicker();
+    //k.kick();
+    MLJsoupRDDAnalyzer ml = new MLJsoupRDDAnalyzer();
+    ml.train();
   }
 }

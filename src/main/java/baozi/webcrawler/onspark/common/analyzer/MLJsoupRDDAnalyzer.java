@@ -2,6 +2,7 @@ package baozi.webcrawler.onspark.common.analyzer;
 
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.Serializable;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.AbstractMap;
@@ -35,28 +36,34 @@ import baozi.webcrawler.common.metainfo.BaseURL;
 import baozi.webcrawler.common.metainfo.JsoupDocWebPage;
 import baozi.webcrawler.common.webcomm.JsoupWebCommManager;
 import baozi.webcrawler.onspark.common.entry.OnSparkInstanceFactory;
-import baozi.webcrawler.onspark.common.workflow.OnSparkWorkflowManager;
 
-public class MLJsoupRDDAnalyzer {
+public class MLJsoupRDDAnalyzer implements Serializable{
   private static transient LogManager logger = new LogManager(
-      OnSparkWorkflowManager.class);
+      MLJsoupRDDAnalyzer.class);
   private transient JSONObject jsonObject;
   private transient NaiveBayes naiveBayes;
   private transient NaiveBayesModel naiveBayesModel;
 
   public void train() {
-    loadTrainingDataFile(null);
+    loadTrainingDataFile("/Users/yliu/mavenWorkspace/eclipse-workspace/OnSparkWebCrawler/conf/training_data.json");
     List<String> training_data = (List<String>) jsonObject.get("training_data");
+    logger.logDebug("training urls: " + training_data.get(0));
     JavaPairRDD<String, Integer> training_rdd = OnSparkInstanceFactory
         .getSparkContext()
         .parallelize(training_data)
         .mapToPair(line -> {
           // Tuple2<String, Integer>: page url, category
-            return new Tuple2<String, Integer>(line.split("\\p")[0], Integer
-                .valueOf(line.split("\\p")[1]));
+            return new Tuple2<String, Integer>(line.split("->")[0], Integer
+                .valueOf(line.split("->")[1]));
           });
     int totalnumOfDoc = training_data.size();
-    JavaPairRDD<String, ArrayList<Integer>> intermediate = training_rdd.map(fetchAndConvert()).map(countTimesInEachDocument()).flatMap(flatDictionary()).mapToPair(convertToPair()).reduceByKey(mergeDictionary());
+    JavaPairRDD<LinkedList<String>, Integer> all_words = training_rdd.mapToPair(fetchAndConvert()).cache();
+    logger.logDebug("all words: " + all_words.collect().toString());
+    JavaRDD<HashMap<String, ArrayList<Integer>>> distri_word_dic = all_words.map(countTimesInEachDocument()).cache();
+    logger.logDebug("distri_word_dic: " + distri_word_dic.collect().toString());
+    JavaPairRDD<String, ArrayList<Integer>> dictionary = distri_word_dic.flatMap(flatDictionary()).mapToPair(convertToPair())
+        .reduceByKey(mergeDictionary());
+    logger.logDebug("dictionary: " + dictionary.collect().toString());
   }
 
   private void loadTrainingDataFile(String inputFilePath) {
@@ -73,8 +80,8 @@ public class MLJsoupRDDAnalyzer {
    * input: Tuple2<String, Integer>: page URL, category return
    * Tuple2<LinkedList<String>: tokenized words on the page , Integer>: category
    */
-  public Function<Tuple2<String, Integer>, Tuple2<LinkedList<String>, Integer>> fetchAndConvert() {
-    return new Function<Tuple2<String, Integer>, Tuple2<LinkedList<String>, Integer>>() {
+  public PairFunction<Tuple2<String, Integer>, LinkedList<String>, Integer> fetchAndConvert() {
+    return new PairFunction<Tuple2<String, Integer>, LinkedList<String>, Integer>() {
 
       @Override
       public Tuple2<LinkedList<String>, Integer> call(
@@ -106,7 +113,7 @@ public class MLJsoupRDDAnalyzer {
         Set<Character> dontwantthem = new HashSet<>(Arrays.asList('<', '>',
             '(', ')', ',', '?', '/', ';'));
         for (int i = 0; i < sb.length(); i++) {
-          logger.logDebug(String.valueOf(sb.charAt(i)));
+          //logger.logDebug(String.valueOf(sb.charAt(i)));
           if (!dontwantthem.contains(sb.charAt(i))) {
             charArray.add(String.valueOf(sb.charAt(i)));
           }
@@ -137,6 +144,8 @@ public class MLJsoupRDDAnalyzer {
             dictionary.put(curr, value);
           } else {
             ArrayList<Integer> newPair = new ArrayList<Integer>();
+            //TODO arraylist should have dynamic size
+            newPair.add(0);newPair.add(1);
             newPair.set(input._2(), 1);
             dictionary.put(curr, newPair);
           }
@@ -167,16 +176,16 @@ public class MLJsoupRDDAnalyzer {
       }
     };
   }
-  
-  public PairFunction<Entry<String, ArrayList<Integer>>, String, ArrayList<Integer>> convertToPair(){
-    return new PairFunction<Entry<String, ArrayList<Integer>>, String, ArrayList<Integer>>(){
+
+  public PairFunction<Entry<String, ArrayList<Integer>>, String, ArrayList<Integer>> convertToPair() {
+    return new PairFunction<Entry<String, ArrayList<Integer>>, String, ArrayList<Integer>>() {
 
       @Override
       public Tuple2<String, ArrayList<Integer>> call(
           Entry<String, ArrayList<Integer>> t) throws Exception {
         return new Tuple2<String, ArrayList<Integer>>(t.getKey(), t.getValue());
       }
-      
+
     };
   }
 
@@ -193,6 +202,7 @@ public class MLJsoupRDDAnalyzer {
           ArrayList<Integer> v2) throws Exception {
 
         ArrayList<Integer> resultList = new ArrayList<Integer>();
+        resultList.add(0);resultList.add(1);
         for (int i = 0; i < v1.size(); i++) {
           resultList.set(i, v2.get(i) + v1.get(i));
         }

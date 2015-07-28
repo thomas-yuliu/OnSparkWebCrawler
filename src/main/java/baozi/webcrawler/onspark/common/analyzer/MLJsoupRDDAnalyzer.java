@@ -5,30 +5,33 @@ import java.io.IOException;
 import java.io.Serializable;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
-import org.apache.spark.api.java.function.FlatMapFunction;
 import org.apache.spark.api.java.function.Function;
-import org.apache.spark.api.java.function.Function2;
+import org.apache.spark.api.java.function.PairFlatMapFunction;
 import org.apache.spark.api.java.function.PairFunction;
 import org.apache.spark.mllib.classification.NaiveBayes;
 import org.apache.spark.mllib.classification.NaiveBayesModel;
+import org.apache.spark.mllib.linalg.Vector;
+import org.apache.spark.mllib.linalg.Vectors;
+import org.apache.spark.mllib.regression.LabeledPoint;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
-import org.jsoup.select.Elements;
 import org.jsoup.nodes.Element;
+import org.jsoup.select.Elements;
 
 import scala.Tuple2;
 import baozi.webcralwer.common.utils.LogManager;
@@ -37,62 +40,168 @@ import baozi.webcrawler.common.metainfo.JsoupDocWebPage;
 import baozi.webcrawler.common.webcomm.JsoupWebCommManager;
 import baozi.webcrawler.onspark.common.entry.OnSparkInstanceFactory;
 
-public class MLJsoupRDDAnalyzer implements Serializable{
+import com.clearspring.analytics.util.Lists;
+
+public class MLJsoupRDDAnalyzer implements Serializable {
   private static transient LogManager logger = new LogManager(
       MLJsoupRDDAnalyzer.class);
-  private transient JSONObject jsonObject;
-  private transient NaiveBayes naiveBayes;
+  private Map<String, Integer> docToClass;
+  private Map<String, List<String>> docToTerms;
+  private Map<String, Double> termToIdf;
+  private JavaRDD<LabeledPoint> listOfLabledPoint;
   private transient NaiveBayesModel naiveBayesModel;
 
   public void train() {
     loadTrainingDataFile("/Users/yliu/mavenWorkspace/eclipse-workspace/OnSparkWebCrawler/conf/training_data.json");
-    List<String> training_data = (List<String>) jsonObject.get("training_data");
-    logger.logDebug("training urls: " + training_data.get(0));
-    JavaPairRDD<String, Integer> training_rdd = OnSparkInstanceFactory
-        .getSparkContext()
-        .parallelize(training_data)
-        .mapToPair(line -> {
-          // Tuple2<String, Integer>: page url, category
-            return new Tuple2<String, Integer>(line.split("->")[0], Integer
-                .valueOf(line.split("->")[1]));
-          });
-    int totalnumOfDoc = training_data.size();
-    JavaPairRDD<LinkedList<String>, Integer> all_words = training_rdd.mapToPair(fetchAndConvert()).cache();
-    logger.logDebug("all words: " + all_words.collect().toString());
-    JavaRDD<HashMap<String, ArrayList<Integer>>> distri_word_dic = all_words.map(countTimesInEachDocument()).cache();
-    logger.logDebug("distri_word_dic: " + distri_word_dic.collect().toString());
-    JavaPairRDD<String, ArrayList<Integer>> dictionary = distri_word_dic.flatMap(flatDictionary()).mapToPair(convertToPair())
-        .reduceByKey(mergeDictionary());
-    logger.logDebug("dictionary: " + dictionary.collect().toString());
+    logger.logDebug("training urls: " + docToClass.toString());
+    JavaPairRDD<String, List<String>> docToTermsRDD = fetchDocTerms(docToClass).cache();
+    docToTerms = docToTermsRDD.collectAsMap();
+    List<Tuple2<String, List<String>>> docToTermsList = docToTermsRDD.collect();
+    logger.logDebug("docToTermsList: " + docToTermsList.toString());
+    termToIdf = calculateIDF(docToClass, docToTermsList);
+    logger.logDebug("termToIdf: " + termToIdf.toString());
+    listOfLabledPoint = calculateLabeledPoints(docToClass, docToTermsList,
+        termToIdf);
+    naiveBayesModel = NaiveBayes.train(listOfLabledPoint.rdd());
+  }
+
+  public void predict() {
+    Map<String, Integer> docToClass = new HashMap<String, Integer>();
+    docToClass.put("http://www.mitbbs.com/article_t/JobHunting/33013183.html",
+        -1);// -1 not important. just to use the map
+    JavaPairRDD<String, List<String>> docToTermsRDD = fetchDocTerms(docToClass).cache();
+    Map<String, List<String>> docToTerms = docToTermsRDD.collectAsMap();
+    List<Tuple2<String, List<String>>> docToTermsList = docToTermsRDD.collect();
+    Map<String, Double> termToIdf = calculateIDF(docToClass, docToTermsList);
+    JavaRDD<LabeledPoint> listOfLabledPoint = calculateLabeledPoints(docToClass, docToTermsList,
+        termToIdf);
+    LabeledPoint lp = listOfLabledPoint.collect().get(0);
+    double predict_result = naiveBayesModel.predict(lp.features());
+    logger.logDebug("result is: " + predict_result);
+  }
+
+  private JavaRDD<LabeledPoint> calculateLabeledPoints(
+      Map<String, Integer> docToClass, List<Tuple2<String, List<String>>> docToTerms,
+      Map<String, Double> termToIdf) {
+    JavaRDD<Tuple2<String, List<String>>> docToTermRdd = OnSparkInstanceFactory
+        .getSparkContext().parallelize(docToTerms);
+    return docToTermRdd
+        .map(docToLabeledPoint(docToClass, termToIdf));
+  }
+
+  private Function<Tuple2<String, List<String>>, LabeledPoint> docToLabeledPoint(
+      Map<String, Integer> docToClass,
+      Map<String, Double> termToIdf) {
+    return new Function<Tuple2<String, List<String>>, LabeledPoint>() {
+
+      // TODO what is the index of string, what order we need to follow when
+      // creating the labeledpoint?
+
+      @Override
+      public LabeledPoint call(Tuple2<String, List<String>> input)
+          throws Exception {
+        // iterate through all terms, check if seen, if not, for each calculate
+        // occurrence times
+        LinkedHashMap<String, Integer> seen = new LinkedHashMap<>();
+        for (String itr : input._2) {
+          if (seen.containsKey(itr)) {
+            seen.put(itr, seen.get(itr) + 1);
+          } else {
+            seen.put(itr, 1);
+          }
+        }
+        LinkedList<Tuple2<Integer, Double>> linkedlist = new LinkedList<>();
+        int i = 0;
+        for (Entry<String, Integer> itr : seen.entrySet()) {
+          linkedlist.add(new Tuple2<Integer, Double>(i, (double) (termToIdf.get(itr
+              .getKey()) * itr.getValue() / seen.size())));
+          i++;
+        }
+        String key = input._1;
+        String key_str = String.valueOf(docToClass.get(key));
+        int label = Integer.parseInt(key_str);
+        logger.logDebug("label: " + key_str + " ; vec: " + linkedlist.toString() + " ; size: " + linkedlist.size());
+        Vector vec = Vectors.sparse(linkedlist.size(), linkedlist);
+        return new LabeledPoint(label, vec);
+      }
+    };
+  }
+
+  private Map<String, Double> calculateIDF(Map<String, Integer> docToClass,
+      List<Tuple2<String, List<String>>> docToTerms) {
+    JavaRDD<Tuple2<String, List<String>>> docToTermRdd = OnSparkInstanceFactory
+        .getSparkContext().parallelize(docToTerms);
+
+    logger.logDebug("intermediate0: " + docToTermRdd.collect().toString());
+
+    JavaPairRDD<String, String> imm1 = docToTermRdd.flatMapToPair(
+        termListsToRddOfTerms())
+        // just to convert entry<doc, terms it contains> to a list of <doc, term> for all terms it contains
+        .cache();
+
+    logger.logDebug("intermediate1: " + imm1.collectAsMap().toString());
+
+    JavaPairRDD<String, Iterable<Tuple2<String, String>>> imm2 = imm1
+        .groupBy(tuple -> tuple._2).distinct().cache();
+
+    logger.logDebug("intermediate2: " + imm2.collectAsMap().toString());
+
+    // group by term and convert the list of <doc, term> to <term, iterable
+    // of docs containing the term>
+    // make sure to distinct() because same term multi time is allowed
+    return imm2.mapToPair(
+        entry -> new Tuple2<String, Double>(entry._1, (double) (docToClass
+            .size() / Lists.newArrayList(entry._2).size()))).collectAsMap();
+    // convert <term, iterable of docs containing the term> into <term, total num of docs/iterable.size()>
+  }
+
+  private PairFlatMapFunction<Tuple2<String, List<String>>, String, String> termListsToRddOfTerms() {
+    return new PairFlatMapFunction<Tuple2<String, List<String>>, String, String>() {
+
+      @Override
+      public Iterable<Tuple2<String, String>> call(
+          Tuple2<String, List<String>> input) throws Exception {
+        logger.logDebug("input: " + input.toString());
+        LinkedList<Tuple2<String, String>> result = new LinkedList<Tuple2<String, String>>();
+        for (String itr : input._2()) {
+          result.add(new Tuple2<String, String>(input._1, itr));
+        }
+        return result;
+      }
+    };
   }
 
   private void loadTrainingDataFile(String inputFilePath) {
     JSONParser parser = new JSONParser();
     try {
-      jsonObject = (JSONObject) parser.parse(new FileReader(inputFilePath));
+      JSONObject jsonObject = (JSONObject) parser.parse(new FileReader(
+          inputFilePath));
+      docToClass = (Map<String, Integer>) jsonObject.get("training_data");
     } catch (IOException | ParseException e) {
-      // TODO Auto-generated catch block
-      e.printStackTrace();
     }
   }
 
+  private JavaPairRDD<String, List<String>> fetchDocTerms(
+      Map<String, Integer> docToClass) {
+    JavaRDD<String> allDocUrls = OnSparkInstanceFactory.getSparkContext()
+        .parallelize(new ArrayList<String>(docToClass.keySet()));
+    return allDocUrls.mapToPair(downloadPageAndTokenize());
+  }
+
   /*
-   * input: Tuple2<String, Integer>: page URL, category return
-   * Tuple2<LinkedList<String>: tokenized words on the page , Integer>: category
+   * input: String: page URL, category return: Tuple2<String, List<String>>
+   * String: url; List<String>: terms the url contains
    */
-  public PairFunction<Tuple2<String, Integer>, LinkedList<String>, Integer> fetchAndConvert() {
-    return new PairFunction<Tuple2<String, Integer>, LinkedList<String>, Integer>() {
+  private PairFunction<String, String, List<String>> downloadPageAndTokenize() {
+    return new PairFunction<String, String, List<String>>() {
 
       @Override
-      public Tuple2<LinkedList<String>, Integer> call(
-          Tuple2<String, Integer> input) throws Exception {
+      public Tuple2<String, List<String>> call(String docUrl) throws Exception {
         // download jsoup is not needed
         URL url = null;
         try {
-          url = new URL(input._1);
+          url = new URL(docUrl);
         } catch (MalformedURLException e) {
-          // TODO Auto-generated catch block
-          e.printStackTrace();
         }
         BaseURL baseUrl = new BaseURL(url);
         JsoupWebCommManager jwcm = new JsoupWebCommManager();
@@ -108,106 +217,23 @@ public class MLJsoupRDDAnalyzer implements Serializable{
           Element element = itr.next();
           sb.append(element.outerHtml());
         }
-        // need tokenization here
+        // TODO need tokenization here
         LinkedList<String> charArray = new LinkedList<>();
         Set<Character> dontwantthem = new HashSet<>(Arrays.asList('<', '>',
             '(', ')', ',', '?', '/', ';'));
         for (int i = 0; i < sb.length(); i++) {
-          //logger.logDebug(String.valueOf(sb.charAt(i)));
+          // logger.logDebug(String.valueOf(sb.charAt(i)));
           if (!dontwantthem.contains(sb.charAt(i))) {
             charArray.add(String.valueOf(sb.charAt(i)));
           }
         }
         logger.logDebug("done: " + charArray);
 
-        return new Tuple2<LinkedList<String>, Integer>(charArray, input._2);
-      }
-    };
-  }
+        // TODO need to make sure each char in charArray appears same times as
+        // it appears in the doc
+        // TODO need to make sure each char is in order as it appears in the doc
 
-  /*
-   * input: Tuple2<LinkedList<String>: tokenized words on the page , Integer>:
-   * category return: HashMap<String, ArrayList<Integer>>: word -> appeared
-   * times for each category(as array)
-   */
-  public Function<Tuple2<LinkedList<String>, Integer>, HashMap<String, ArrayList<Integer>>> countTimesInEachDocument() {
-    return new Function<Tuple2<LinkedList<String>, Integer>, HashMap<String, ArrayList<Integer>>>() {
-      @Override
-      public HashMap<String, ArrayList<Integer>> call(
-          Tuple2<LinkedList<String>, Integer> input) throws Exception {
-
-        HashMap<String, ArrayList<Integer>> dictionary = new HashMap<String, ArrayList<Integer>>();
-        for (String curr : input._1) {
-          if (dictionary.containsKey(curr)) {
-            ArrayList<Integer> value = dictionary.get(curr);
-            value.set(input._2(), value.get(input._2()) + 1);
-            dictionary.put(curr, value);
-          } else {
-            ArrayList<Integer> newPair = new ArrayList<Integer>();
-            //TODO arraylist should have dynamic size
-            newPair.add(0);newPair.add(1);
-            newPair.set(input._2(), 1);
-            dictionary.put(curr, newPair);
-          }
-        }
-        return dictionary;
-      }
-    };
-  }
-
-  /*
-   * input: HashMap<String, ArrayList<Integer>>: word -> appeared times for each
-   * category(as array) return: Tuple2<String, ArrayList<Integer>>: a iterable
-   * list of word -> appeared times pairs
-   */
-  public FlatMapFunction<HashMap<String, ArrayList<Integer>>, Entry<String, ArrayList<Integer>>> flatDictionary() {
-    return new FlatMapFunction<HashMap<String, ArrayList<Integer>>, Entry<String, ArrayList<Integer>>>() {
-
-      @Override
-      public Iterable<Entry<String, ArrayList<Integer>>> call(
-          HashMap<String, ArrayList<Integer>> t) throws Exception {
-        List<Entry<String, ArrayList<Integer>>> result = new ArrayList<Entry<String, ArrayList<Integer>>>();
-        for (Entry<String, ArrayList<Integer>> entry : t.entrySet()) {
-          Entry<String, ArrayList<Integer>> itr = new AbstractMap.SimpleEntry<String, ArrayList<Integer>>(
-              entry.getKey(), entry.getValue());
-          result.add(itr);
-        }
-        return result;
-      }
-    };
-  }
-
-  public PairFunction<Entry<String, ArrayList<Integer>>, String, ArrayList<Integer>> convertToPair() {
-    return new PairFunction<Entry<String, ArrayList<Integer>>, String, ArrayList<Integer>>() {
-
-      @Override
-      public Tuple2<String, ArrayList<Integer>> call(
-          Entry<String, ArrayList<Integer>> t) throws Exception {
-        return new Tuple2<String, ArrayList<Integer>>(t.getKey(), t.getValue());
-      }
-
-    };
-  }
-
-  /*
-   * input: 2 of this: Tuple2<String, ArrayList<Integer>>: a iterable list of
-   * word -> appeared times pairs return: Tuple2<String, ArrayList<Integer>>:
-   * merged the 2 lists of word -> appeared times pairs
-   */
-  public Function2<ArrayList<Integer>, ArrayList<Integer>, ArrayList<Integer>> mergeDictionary() {
-    return new Function2<ArrayList<Integer>, ArrayList<Integer>, ArrayList<Integer>>() {
-
-      @Override
-      public ArrayList<Integer> call(ArrayList<Integer> v1,
-          ArrayList<Integer> v2) throws Exception {
-
-        ArrayList<Integer> resultList = new ArrayList<Integer>();
-        resultList.add(0);resultList.add(1);
-        for (int i = 0; i < v1.size(); i++) {
-          resultList.set(i, v2.get(i) + v1.get(i));
-        }
-
-        return resultList;
+        return new Tuple2<String, List<String>>(docUrl, charArray);
       }
     };
   }

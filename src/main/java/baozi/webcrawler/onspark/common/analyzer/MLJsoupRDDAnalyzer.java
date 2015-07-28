@@ -48,6 +48,7 @@ public class MLJsoupRDDAnalyzer implements Serializable {
   private Map<String, Integer> docToClass;
   private Map<String, List<String>> docToTerms;
   private Map<String, Double> termToIdf;
+  private Map<String, Integer> termToIndex = new HashMap<>();
   private JavaRDD<LabeledPoint> listOfLabledPoint;
   private transient NaiveBayesModel naiveBayesModel;
 
@@ -59,7 +60,16 @@ public class MLJsoupRDDAnalyzer implements Serializable {
     List<Tuple2<String, List<String>>> docToTermsList = docToTermsRDD.collect();
     logger.logDebug("docToTermsList: " + docToTermsList.toString());
     termToIdf = calculateIDF(docToClass, docToTermsList);
-    logger.logDebug("termToIdf: " + termToIdf.toString());
+    logger.logDebug("termToIdf size: " + termToIdf.size() + " ; termToIdf: " + termToIdf.toString());
+    
+    // TODO think about whether below can be parallelized
+    int assigned_index = 0;
+    for(String key : termToIdf.keySet()){
+      termToIndex.put(key, assigned_index);
+      assigned_index ++;
+    }
+    logger.logDebug("termToIndex: " + termToIndex.size() + " ; term to index: " + termToIndex.toString());
+    
     listOfLabledPoint = calculateLabeledPoints(docToClass, docToTermsList,
         termToIdf);
     naiveBayesModel = NaiveBayes.train(listOfLabledPoint.rdd());
@@ -72,17 +82,24 @@ public class MLJsoupRDDAnalyzer implements Serializable {
     JavaPairRDD<String, List<String>> docToTermsRDD = fetchDocTerms(docToClass).cache();
     Map<String, List<String>> docToTerms = docToTermsRDD.collectAsMap();
     List<Tuple2<String, List<String>>> docToTermsList = docToTermsRDD.collect();
-    Map<String, Double> termToIdf = calculateIDF(docToClass, docToTermsList);
+    //Map<String, Double> termToIdf = calculateIDF(docToClass, docToTermsList);
     JavaRDD<LabeledPoint> listOfLabledPoint = calculateLabeledPoints(docToClass, docToTermsList,
         termToIdf);
     LabeledPoint lp = listOfLabledPoint.collect().get(0);
+    logger.logDebug("lp before predict: " + lp.toString());
     double predict_result = naiveBayesModel.predict(lp.features());
     logger.logDebug("result is: " + predict_result);
+    try {
+      Thread.sleep(300);
+    } catch (InterruptedException e) {
+      e.printStackTrace();
+    }
   }
 
   private JavaRDD<LabeledPoint> calculateLabeledPoints(
       Map<String, Integer> docToClass, List<Tuple2<String, List<String>>> docToTerms,
       Map<String, Double> termToIdf) {
+    // TODO dont run as divided jobs, but optimize the workflow
     JavaRDD<Tuple2<String, List<String>>> docToTermRdd = OnSparkInstanceFactory
         .getSparkContext().parallelize(docToTerms);
     return docToTermRdd
@@ -111,18 +128,21 @@ public class MLJsoupRDDAnalyzer implements Serializable {
           }
         }
         LinkedList<Tuple2<Integer, Double>> linkedlist = new LinkedList<>();
-        int i = 0;
         for (Entry<String, Integer> itr : seen.entrySet()) {
-          linkedlist.add(new Tuple2<Integer, Double>(i, (double) (termToIdf.get(itr
-              .getKey()) * itr.getValue() / seen.size())));
-          i++;
+          
+          //when used by prediction, it is possible the word is not in dictionary yet
+          //think about what to do
+          if(!termToIndex.containsKey(itr.getKey())){continue;}
+          
+          linkedlist.add(new Tuple2<Integer, Double>(termToIndex.get(itr.getKey()),
+              (double) (termToIdf.get(itr.getKey()) * itr.getValue() / seen.size())));
         }
         String key = input._1;
         //weird int -> str and then back because of long -> integer casting exception otherwise.
         String key_str = String.valueOf(docToClass.get(key));
         int label = Integer.parseInt(key_str);
         logger.logDebug("label: " + label + " ; vec: " + linkedlist.toString() + " ; size: " + linkedlist.size());
-        Vector vec = Vectors.sparse(linkedlist.size(), linkedlist);
+        Vector vec = Vectors.sparse(termToIndex.size(), linkedlist);
         return new LabeledPoint(label, vec);
       }
     };

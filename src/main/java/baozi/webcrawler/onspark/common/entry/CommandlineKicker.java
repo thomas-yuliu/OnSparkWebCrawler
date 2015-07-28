@@ -9,5 +9,6 @@ public class CommandlineKicker extends OnSparkKicker {
     //k.kick();
     MLJsoupRDDAnalyzer ml = new MLJsoupRDDAnalyzer();
     ml.train();
+    ml.predict();
   }
 }

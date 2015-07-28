@@ -118,9 +118,10 @@ public class MLJsoupRDDAnalyzer implements Serializable {
           i++;
         }
         String key = input._1;
+        //weird int -> str and then back because of long -> integer casting exception otherwise.
         String key_str = String.valueOf(docToClass.get(key));
         int label = Integer.parseInt(key_str);
-        logger.logDebug("label: " + key_str + " ; vec: " + linkedlist.toString() + " ; size: " + linkedlist.size());
+        logger.logDebug("label: " + label + " ; vec: " + linkedlist.toString() + " ; size: " + linkedlist.size());
         Vector vec = Vectors.sparse(linkedlist.size(), linkedlist);
         return new LabeledPoint(label, vec);
       }

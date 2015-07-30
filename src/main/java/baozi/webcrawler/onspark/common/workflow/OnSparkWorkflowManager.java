@@ -6,7 +6,7 @@ import org.apache.spark.api.java.JavaRDD;
 
 import baozi.webcralwer.common.utils.LogManager;
 import baozi.webcralwer.common.utils.PaceKeeper;
-import baozi.webcrawler.onspark.common.analyzer.RDDAnalyzer;
+import baozi.webcrawler.onspark.common.analyzer.RDDAnalyzingManager;
 import baozi.webcrawler.onspark.common.entry.OnSparkInstanceFactory;
 import baozi.webcrawler.common.metainfo.BaseURL;
 import baozi.webcrawler.onspark.common.queue.RDDURLQueue;
@@ -19,7 +19,7 @@ public class OnSparkWorkflowManager {
   private LogManager logger = new LogManager(OnSparkWorkflowManager.class);
 
   private RDDURLQueue nextQueue = OnSparkInstanceFactory.getNextURLQueueInstance();
-  private RDDAnalyzer rddAnalyzer = OnSparkInstanceFactory.getRDDAnalyzer();
+  private RDDAnalyzingManager rddAnalManager = OnSparkInstanceFactory.getRDDAnalyzer();
   private RDDURLIdentifier urlIdentifier = OnSparkInstanceFactory.getURLIdentifier();
   private RDDPreExpansionFilterEnforcer preExpansionfilterEnforcer = OnSparkInstanceFactory.getPreExpansionFilterEnforcer();
   private RDDPostExpansionFilterEnforcer postExpansionfilterEnforcer = OnSparkInstanceFactory.getPostExpansionFilterEnforcer();
@@ -35,7 +35,7 @@ public class OnSparkWorkflowManager {
           .filter(RDDFunctionWebCommManager.filterEmptyUrls()).cache();
       downloaded.cache();
       logger.logDebug("downloaded web pages");
-      downloaded.foreach(rddAnalyzer.analyze());
+      downloaded.foreach(rddAnalManager.manageAnalyzing());
 
       List<BaseURL> nextUrls = downloaded
           .filter(preExpansionfilterEnforcer.filter())

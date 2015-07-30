@@ -4,7 +4,7 @@ import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaSparkContext;
 
-import baozi.webcrawler.onspark.common.analyzer.RDDAnalyzer;
+import baozi.webcrawler.onspark.common.analyzer.RDDAnalyzingManager;
 import baozi.webcrawler.onspark.common.queue.RDDURLQueue;
 import baozi.webcrawler.onspark.common.urlfilter.RDDPostExpansionFilterEnforcer;
 import baozi.webcrawler.onspark.common.urlfilter.RDDPreExpansionFilterEnforcer;
@@ -15,7 +15,7 @@ import baozi.webcrawler.onspark.common.webcomm.RDDFunctionWebCommManager;
 public class OnSparkInstanceFactory {
   private static final SparkConf sparkConf = new SparkConf().setAppName("BaoziSparkWebCralwer");
   private static final JavaSparkContext sparkContext = new JavaSparkContext(sparkConf);
-  private static final RDDAnalyzer rddAnalyzer = new RDDAnalyzer();
+  private static final RDDAnalyzingManager rddAnalyzer = new RDDAnalyzingManager();
   private static final RDDPreExpansionFilterEnforcer rddPreExpansionFilterEnforcer = new RDDPreExpansionFilterEnforcer();
   private static final RDDPostExpansionFilterEnforcer rddPostExpansionFilterEnforcer = new RDDPostExpansionFilterEnforcer();
   private static final RDDURLQueue rddURLQueue = new RDDURLQueue();
@@ -25,7 +25,7 @@ public class OnSparkInstanceFactory {
     return sparkContext;
   }
 
-  public static RDDAnalyzer getRDDAnalyzer() {
+  public static RDDAnalyzingManager getRDDAnalyzer() {
     return rddAnalyzer;
   }
 

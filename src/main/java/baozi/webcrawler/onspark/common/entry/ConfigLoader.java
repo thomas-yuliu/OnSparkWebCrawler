@@ -11,11 +11,12 @@ import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
 
-import baozi.webcralwer.common.utils.LogManager;
 import baozi.webcrawler.common.metainfo.BaseURL;
 import baozi.webcrawler.common.urlfilter.ContentTypeFilter;
 import baozi.webcrawler.common.urlfilter.InMemroySeenUrlFilter;
 import baozi.webcrawler.common.urlfilter.UrlDepthFilter;
+import baozi.webcrawler.common.utils.LogManager;
+import baozi.webcrawler.onspark.common.analyzer.NaiveBayesBasedOfferPageAnalyzer;
 
 public class ConfigLoader {
   private LogManager logger = new LogManager(ConfigLoader.class);
@@ -26,12 +27,12 @@ public class ConfigLoader {
     try {
       jsonObject = (JSONObject)parser.parse(new FileReader(inputFilePath));
     } catch (IOException | ParseException e) {
-      // TODO Auto-generated catch block
-      e.printStackTrace();
+      logger.logError("error when parsing config file: " + inputFilePath + "; " + e.toString());
     }
   }
   
   public void load(){
+  //TODO to use relative path of config file
     loadInputConfigFile("/Users/yliu/mavenWorkspace/eclipse-workspace/WebCrawler/conf/inputConfig.json");
 
     InMemroySeenUrlFilter seenFilter = new InMemroySeenUrlFilter();
@@ -62,5 +63,7 @@ public class ConfigLoader {
     ContentTypeFilter fileExtensionFilter = new ContentTypeFilter();
     OnSparkInstanceFactory.getPostExpansionFilterEnforcer().addFilter(fileExtensionFilter);
     
+    NaiveBayesBasedOfferPageAnalyzer nb = new NaiveBayesBasedOfferPageAnalyzer();
+    OnSparkInstanceFactory.getAnalyzingManager().addAnalyzer(nb);
   }
 }

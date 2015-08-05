@@ -4,10 +4,10 @@ import java.io.Serializable;
 
 import org.apache.spark.api.java.function.Function;
 
-import baozi.webcralwer.common.utils.LogManager;
 import baozi.webcrawler.common.metainfo.BaseURL;
 import baozi.webcrawler.common.urlfilter.FilterEnforcer;
 import baozi.webcrawler.common.urlfilter.UrlDepthFilter;
+import baozi.webcrawler.common.utils.LogManager;
 import baozi.webcrawler.onspark.common.queue.RDDURLQueue;
 
 public class RDDPreExpansionFilterEnforcer extends FilterEnforcer implements Serializable{

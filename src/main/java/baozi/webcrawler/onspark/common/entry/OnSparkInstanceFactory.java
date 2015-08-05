@@ -25,7 +25,7 @@ public class OnSparkInstanceFactory {
     return sparkContext;
   }
 
-  public static RDDAnalyzingManager getRDDAnalyzer() {
+  public static RDDAnalyzingManager getAnalyzingManager() {
     return rddAnalyzer;
   }
 

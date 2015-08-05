@@ -6,16 +6,13 @@ import java.io.Serializable;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Set;
 
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
@@ -34,9 +31,11 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
 import scala.Tuple2;
-import baozi.webcralwer.common.utils.LogManager;
+import baozi.webcrawler.common.entry.InstanceFactory;
 import baozi.webcrawler.common.metainfo.BaseURL;
 import baozi.webcrawler.common.metainfo.JsoupDocWebPage;
+import baozi.webcrawler.common.tokenizer.TextTokenizer;
+import baozi.webcrawler.common.utils.LogManager;
 import baozi.webcrawler.common.webcomm.JsoupWebCommManager;
 import baozi.webcrawler.onspark.common.entry.OnSparkInstanceFactory;
 
@@ -54,6 +53,7 @@ public class NaiveBayesPageClassifier implements Serializable {
 
   //train the model
   public void train() {
+    //TODO to use relative path of config file
     loadTrainingDataFile("/Users/yliu/mavenWorkspace/eclipse-workspace/OnSparkWebCrawler/conf/training_data.json");
     logger.logDebug("training urls: " + docToClass.toString());
     JavaPairRDD<String, List<String>> docToTermsRDD = fetchDocTerms(docToClass).cache();
@@ -74,6 +74,7 @@ public class NaiveBayesPageClassifier implements Serializable {
     listOfLabledPoint = calculateLabeledPoints(docToClass, docToTermsList,
         termToIdf);
     naiveBayesModel = NaiveBayes.train(listOfLabledPoint.rdd());
+    logger.logInfo("trained model.");
   }
 
   //predict the category of the page
@@ -90,7 +91,7 @@ public class NaiveBayesPageClassifier implements Serializable {
     LabeledPoint lp = listOfLabledPoint.collect().get(0);
     logger.logDebug("lp before predict: " + lp.toString());
     double predict_result = naiveBayesModel.predict(lp.features());
-    logger.logDebug("result is: " + predict_result);
+    logger.logInfo("result is: " + predict_result);
     
     // do this: https://github.com/fommil/netlib-java/issues/62
     return predict_result;
@@ -115,10 +116,10 @@ public class NaiveBayesPageClassifier implements Serializable {
       // creating the labeledpoint?
 
       @Override
+      // param: doc -> terms it contains
       public LabeledPoint call(Tuple2<String, List<String>> input)
           throws Exception {
-        // iterate through all terms, check if seen, if not, for each calculate
-        // occurrence times
+        // iterate through all terms, calculate each's occurrence times
         LinkedHashMap<String, Integer> seen = new LinkedHashMap<>();
         for (String itr : input._2) {
           if (seen.containsKey(itr)) {
@@ -131,8 +132,10 @@ public class NaiveBayesPageClassifier implements Serializable {
         for (Entry<String, Integer> itr : seen.entrySet()) {
           
           //when used by prediction, it is possible the word is not in dictionary yet
-          //think about what to do
+          //for now, ignore. TODO think about what to do
           if(!termToIndex.containsKey(itr.getKey())){continue;}
+          
+          logger.logDebug("string is: " + itr.getKey() + " tf-idf is: " + (double) (termToIdf.get(itr.getKey()) * itr.getValue() / seen.size()));
           
           linkedlist.add(new Tuple2<Integer, Double>(termToIndex.get(itr.getKey()),
               (double) (termToIdf.get(itr.getKey()) * itr.getValue() / seen.size())));
@@ -152,30 +155,28 @@ public class NaiveBayesPageClassifier implements Serializable {
       List<Tuple2<String, List<String>>> docToTerms) {
     JavaRDD<Tuple2<String, List<String>>> docToTermRdd = OnSparkInstanceFactory
         .getSparkContext().parallelize(docToTerms);
-
-    logger.logDebug("intermediate0: " + docToTermRdd.collect().toString());
-
     JavaPairRDD<String, String> imm1 = docToTermRdd.flatMapToPair(
-        termListsToRddOfTerms())
+        termListsToRddOfTerms()).distinct()
         // just to convert entry<doc, terms it contains> to a list of <doc, term> for all terms it contains
+        // make sure to distinct() because same term multi time is allowed. 
+        // and for here we don't care how many times a term appears
+        // we only care how many docs contain the term
         .cache();
-
-    logger.logDebug("intermediate1: " + imm1.collectAsMap().toString());
-
     JavaPairRDD<String, Iterable<Tuple2<String, String>>> imm2 = imm1
-        .groupBy(tuple -> tuple._2).distinct().cache();
-
-    logger.logDebug("intermediate2: " + imm2.collectAsMap().toString());
-
+        .groupBy(tuple -> tuple._2).cache();
+    logger.logDebug("term to list of doc: " + imm2.collectAsMap().toString());
     // group by term and convert the list of <doc, term> to <term, iterable
     // of docs containing the term>
-    // make sure to distinct() because same term multi time is allowed
-    return imm2.mapToPair(
+    Map<String, Double> result = imm2.mapToPair(
         entry -> new Tuple2<String, Double>(entry._1, (double) (docToClass
             .size() / Lists.newArrayList(entry._2).size()))).collectAsMap();
     // convert <term, iterable of docs containing the term> into <term, total num of docs/iterable.size()>
+    logger.logDebug("IDF score: " + result.toString());
+    return result;
   }
 
+  //input is doc -> the list of terms it contains
+  //output is list of doc to each terms it contains
   private PairFlatMapFunction<Tuple2<String, List<String>>, String, String> termListsToRddOfTerms() {
     return new PairFlatMapFunction<Tuple2<String, List<String>>, String, String>() {
 
@@ -228,33 +229,24 @@ public class NaiveBayesPageClassifier implements Serializable {
         JsoupWebCommManager jwcm = new JsoupWebCommManager();
         baseUrl.downloadPageContent(jwcm);
         JsoupDocWebPage jdwp = (JsoupDocWebPage) baseUrl.getPageContent();
-        // logger.logDebug("jdwp: " + jdwp.getPageHtml());
-        // need a class hierarchy. this is specific to mitbbs
+        // TODO need a class hierarchy. this is specific to mitbbs
         Elements elements = jdwp.getDoc().body().getElementsByTag("p");
-        // logger.logDebug("ele: " + elements.toString());
         Iterator<Element> itr = elements.iterator();
         StringBuilder sb = new StringBuilder();
         while (itr.hasNext()) {
           Element element = itr.next();
-          sb.append(element.outerHtml());
+          //logger.logDebug("ownText: " + element.ownText());
+          sb.append(element.ownText());
         }
-        // TODO need tokenization here
-        LinkedList<String> charArray = new LinkedList<>();
-        Set<Character> dontwantthem = new HashSet<>(Arrays.asList('<', '>',
-            '(', ')', ',', '?', '/', ';'));
-        for (int i = 0; i < sb.length(); i++) {
-          // logger.logDebug(String.valueOf(sb.charAt(i)));
-          if (!dontwantthem.contains(sb.charAt(i))) {
-            charArray.add(String.valueOf(sb.charAt(i)));
-          }
-        }
-        logger.logDebug("done: " + charArray);
-
+        
+        TextTokenizer tokenizer = InstanceFactory.getTextTokenizer();
+        List<String> stems = tokenizer.tokenize(sb.toString());
+        
         // TODO need to make sure each char in charArray appears same times as
         // it appears in the doc
         // TODO need to make sure each char is in order as it appears in the doc
 
-        return new Tuple2<String, List<String>>(docUrl, charArray);
+        return new Tuple2<String, List<String>>(docUrl, stems);
       }
     };
   }

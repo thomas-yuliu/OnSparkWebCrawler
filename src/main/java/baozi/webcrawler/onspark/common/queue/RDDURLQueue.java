@@ -7,8 +7,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 import org.apache.spark.api.java.JavaRDD;
 
-import baozi.webcralwer.common.utils.LogManager;
 import baozi.webcrawler.common.metainfo.BaseURL;
+import baozi.webcrawler.common.utils.LogManager;
 import baozi.webcrawler.onspark.common.entry.OnSparkInstanceFactory;
 import baozi.webcrawler.onspark.common.workflow.OnSparkWorkflowManager;
 

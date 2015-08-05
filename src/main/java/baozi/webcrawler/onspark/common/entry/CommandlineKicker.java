@@ -6,9 +6,6 @@ public class CommandlineKicker extends OnSparkKicker {
 
   public static void main(String[] input){
     OnSparkKicker k = new OnSparkKicker();
-    //k.kick();
-    NaiveBayesPageClassifier ml = new NaiveBayesPageClassifier();
-    ml.train();
-    ml.predict();
+    k.kick();
   }
 }

@@ -4,11 +4,11 @@ import java.io.Serializable;
 
 import org.apache.spark.api.java.function.Function;
 
-import baozi.webcralwer.common.utils.LogManager;
 import baozi.webcrawler.common.metainfo.BaseURL;
 import baozi.webcrawler.common.urlfilter.ContentTypeFilter;
 import baozi.webcrawler.common.urlfilter.FilterEnforcer;
 import baozi.webcrawler.common.urlfilter.InMemroySeenUrlFilter;
+import baozi.webcrawler.common.utils.LogManager;
 
 public class RDDPostExpansionFilterEnforcer extends FilterEnforcer implements Serializable{
   private static transient LogManager logger = new LogManager(RDDPostExpansionFilterEnforcer.class);

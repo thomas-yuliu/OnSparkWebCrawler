@@ -4,11 +4,11 @@ import java.util.List;
 
 import org.apache.spark.api.java.JavaRDD;
 
-import baozi.webcralwer.common.utils.LogManager;
-import baozi.webcralwer.common.utils.PaceKeeper;
 import baozi.webcrawler.onspark.common.analyzer.RDDAnalyzingManager;
 import baozi.webcrawler.onspark.common.entry.OnSparkInstanceFactory;
 import baozi.webcrawler.common.metainfo.BaseURL;
+import baozi.webcrawler.common.utils.LogManager;
+import baozi.webcrawler.common.utils.PaceKeeper;
 import baozi.webcrawler.onspark.common.queue.RDDURLQueue;
 import baozi.webcrawler.onspark.common.urlfilter.RDDPostExpansionFilterEnforcer;
 import baozi.webcrawler.onspark.common.urlfilter.RDDPreExpansionFilterEnforcer;
@@ -19,7 +19,7 @@ public class OnSparkWorkflowManager {
   private LogManager logger = new LogManager(OnSparkWorkflowManager.class);
 
   private RDDURLQueue nextQueue = OnSparkInstanceFactory.getNextURLQueueInstance();
-  private RDDAnalyzingManager rddAnalManager = OnSparkInstanceFactory.getRDDAnalyzer();
+  private RDDAnalyzingManager rddAnalManager = OnSparkInstanceFactory.getAnalyzingManager();
   private RDDURLIdentifier urlIdentifier = OnSparkInstanceFactory.getURLIdentifier();
   private RDDPreExpansionFilterEnforcer preExpansionfilterEnforcer = OnSparkInstanceFactory.getPreExpansionFilterEnforcer();
   private RDDPostExpansionFilterEnforcer postExpansionfilterEnforcer = OnSparkInstanceFactory.getPostExpansionFilterEnforcer();

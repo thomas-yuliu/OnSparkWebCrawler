@@ -171,7 +171,6 @@ public class NaiveBayesPageClassifier implements Serializable {
         entry -> new Tuple2<String, Double>(entry._1, (double) (docToClass
             .size() / Lists.newArrayList(entry._2).size()))).collectAsMap();
     // convert <term, iterable of docs containing the term> into <term, total num of docs/iterable.size()>
-    logger.logDebug("IDF score: " + result.toString());
     return result;
   }
 
